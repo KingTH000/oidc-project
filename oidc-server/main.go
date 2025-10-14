@@ -610,7 +610,7 @@ func main() {
 		),
 		provider.WithPKCE(goidc.CodeChallengeMethodSHA256, goidc.CodeChallengeMethodPlain),
 		provider.WithTokenOptions(func(gi goidc.GrantInfo, c *goidc.Client) goidc.TokenOptions {
-			return goidc.NewOpaqueTokenOptions(32, 3600)
+			return goidc.NewJWTTokenOptions(goidc.RS256, 3600)
 		}),
 
 		provider.WithTokenIntrospection(
