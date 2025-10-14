@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authorize Access</title>
+    <link rel="stylesheet" href="/static/css/auth.css">
+</head>
+
+<body>
+    <div class="login-container" style="text-align: center;">
+        <div class="login-header">
+            <h2>Authorize Access</h2>
+            <p class="subtitle">
+                The application <strong>{{.ClientName}}</strong> wants to access your account.
+            </p>
+        </div>
+
+        <div class="consent-scopes" style="text-align: left; margin: 20px 0;">
+            <p>This will allow the application to:</p>
+            <ul>
+                {{range .Scopes}}
+                <li>{{.Description}}</li>
+                {{end}}
+            </ul>
+        </div>
+
+        <form method="POST" action="/authorize/{{.CallbackID}}" class="login-form">
+            <input type="hidden" name="consent_form" value="true" />
+
+            <div style="display: flex; justify-content: space-between;">
+                <button type="submit" name="consent" value="deny" class="btn-secondary"
+                    style="background-color: #6c757d;">Deny</button>
+                <button type="submit" name="consent" value="allow" class="btn-primary">Allow</button>
+            </div>
+        </form>
+
+        <div class="login-footer">
+            <p>You should only grant access to applications you trust.</p>
+        </div>
+    </div>
+</body>
+
+</html>
