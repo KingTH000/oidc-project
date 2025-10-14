@@ -1,0 +1,12 @@
+# Compiled binary
+oidc-server
+
+# Private keys and secrets
+signing_key.pem
+
+# Mac system files
+.DS_Store
+
+# IDE/Editor folders
+.vscode/
+.idea/
