@@ -12,10 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"io"
+	// "io"
 	"log"
 	"net/http"
-	"net/url"
+	// "net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -25,7 +25,9 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/luikyv/go-oidc/pkg/goidc"
 	"github.com/luikyv/go-oidc/pkg/provider"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/crypto/bcrypt"
+
 )
 
 //go:embed templates/*.html
@@ -504,6 +506,8 @@ func main() {
 				session.AdditionalIDTokenClaims = map[string]any{"email": user.Email, "username": user.Username}
 				
 				session.AdditionalUserInfoClaims= map[string]any{"email": user.Email, "username": user.Username}
+
+				session.AdditionalTokenClaims = map[string]any{"aud": session.ClientID}
 				
 			}
 			
@@ -655,79 +659,64 @@ func main() {
 		log.Fatalf("Failed to save static client: %v", err)
 	}
 
+	
+
 	mux := http.NewServeMux()
 
 	// Serve static files (CSS)
 	mux.Handle("/static/", http.FileServer(http.FS(staticFS)))
 
+	// Register OpenID Provider routes
+	mux.Handle("/", op.Handler())
+
+	go func() {
+		if err := http.ListenAndServe(":8080", mux); err != nil {
+		log.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond) // Give server a moment to start
+
+	// Initialize a verifier for our JWT access tokens.
+	// It uses the OIDC discovery endpoint to find the JWKS URL.
+	ctx := context.Background()
+	provider, err := oidc.NewProvider(ctx, "http://localhost:8080")
+	if err != nil {
+		log.Fatalf("Failed to create OIDC provider verifier: %v", err)
+	}
+	jwtVerifier := provider.Verifier(&oidc.Config{ClientID: "test-client"})
+	log.Println("✅ JWT Verifier initialized successfully")
+
 	// When client reach for the api/posts endpoint
 	mux.HandleFunc("/api/posts", func(w http.ResponseWriter, r *http.Request) {
-		// 1. Get the token from the Authorization header (same as before)
+		// 1. Get the JWT from the Authorization header
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 			http.Error(w, "Authorization header is missing or invalid", http.StatusUnauthorized)
 			return
 		}
-		token := strings.TrimPrefix(authHeader, "Bearer ")
+		jwtString := strings.TrimPrefix(authHeader, "Bearer ")
 
-		// 2. Call the introspection endpoint to validate the token
-		introspectionURL := "http://localhost:8080/introspect"
-		resp, err := http.PostForm(introspectionURL, url.Values{
-			"token": {token},
-			"client": {"test-client"}, 
-			"client_id": {"test-client"},
-			"client_secret": {"client-secret"},
-		},)
+		// 2. Validate the JWT locally using the verifier
+		// The verifier checks the signature against the JWKS, the expiration, and the issuer.
+		accessToken, err := jwtVerifier.Verify(r.Context(), jwtString)
 		if err != nil {
-			log.Printf("Error during introspection request: %v", err)
-			http.Error(w, "Internal server error during token validation", http.StatusInternalServerError)
-			return
-		}
-		defer resp.Body.Close()
-
-		// Read the entire response body into a byte slice first.
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Printf("Error reading introspection response body: %v", err)
-			http.Error(w, "Internal server error reading validation response", http.StatusInternalServerError)
-			return
-		}
-
-		log.Printf("Raw Introspection Response: %s", string(body))
-
-		// Decode the JSON response from the introspection endpoint
-		var introspectionResponse struct {
-			Active  bool            `json:"active"`
-			Subject json.RawMessage `json:"sub"`
-			Scope   string          `json:"scope"`
-		}
-		if err := json.Unmarshal(body, &introspectionResponse); err != nil {
-			log.Printf("Error decoding introspection response: %v", err)
-			http.Error(w, "Internal server error decoding validation response", http.StatusInternalServerError)
-			return
-		}
-
-		// Convert subject to string
-		var subjectStr string
-		// Try to decode as string
-		if err := json.Unmarshal(introspectionResponse.Subject, &subjectStr); err != nil {
-			// If not a string, try as float64
-			var subjectNum float64
-			if err := json.Unmarshal(introspectionResponse.Subject, &subjectNum); err != nil {
-				http.Error(w, "Invalid subject type in token", http.StatusInternalServerError)
-				return
-			}
-			subjectStr = fmt.Sprintf("%.0f", subjectNum)
-		}
-
-		// 3. Check if the token is active
-		if !introspectionResponse.Active {
+			log.Printf("Token verification failed: %v", err)
 			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
 
-		// 4. Enforce scope from the introspection response
-		grantedScopes := strings.Fields(introspectionResponse.Scope)
+		// 3. Extract custom claims from the token (including scope)
+		var claims struct {
+			Scope string `json:"scope"`
+		}
+		if err := accessToken.Claims(&claims); err != nil {
+			http.Error(w, "Failed to extract claims from token", http.StatusInternalServerError)
+			return
+		}
+
+		// 4. Enforce scope from the the JWT's "scope" claim
+		grantedScopes := strings.Fields(claims.Scope)
 		hasScope := false
 		for _, scope := range grantedScopes {
 			if scope == "posts.read" {
@@ -740,8 +729,8 @@ func main() {
 			return
 		}
 
-		// 5. Get user ID from the response's subject and proceed
-		userID, err := strconv.Atoi(subjectStr)
+		// 5. Get user ID from the JWT's "sub" (subject) claim and proceed
+		userID, err := strconv.Atoi(accessToken.Subject)
 		if err != nil {
 			http.Error(w, "Invalid user ID in token", http.StatusInternalServerError)
 			return
@@ -758,15 +747,23 @@ func main() {
 		json.NewEncoder(w).Encode(posts)
 	})
 
-	// Register OpenID Provider routes
-	mux.Handle("/", op.Handler())
+	
 
 	log.Println("🚀 OpenID Provider running on http://localhost:8080")
 	log.Println("📖 Well-known endpoint: http://localhost:8080/.well-known/openid-configuration")
 	log.Println("🔑 JWKS endpoint: http://localhost:8080/jwks")
 	log.Println("💾 Database: blog (users table)")
 
-	if err := http.ListenAndServe(":8080", mux); err != nil {
-		log.Fatalf("Server failed: %v", err)
-	}
+	
+	
+
+	
+
+	_, err = oidc.NewProvider(ctx, "http://localhost:8080")
+    if err != nil {
+        log.Fatalf("Failed to create OIDC provider verifier after server start: %v", err)
+    }
+    
+	select{}
+    
 }
