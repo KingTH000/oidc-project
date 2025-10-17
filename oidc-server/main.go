@@ -331,7 +331,7 @@ func (m *InMemoryGrantSessionManager) DeleteByAuthCode(ctx context.Context, auth
 func loadOrGenerateKey(filename string) (*rsa.PrivateKey, error) {
 	// Try to load existing key
 	if _, err := os.Stat(filename); err == nil {
-		log.Printf("📂 Loading existing RSA key from %s", filename)
+		log.Printf("Loading existing RSA key from %s", filename)
 		keyData, err := os.ReadFile(filename)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read key file: %w", err)
@@ -352,7 +352,7 @@ func loadOrGenerateKey(filename string) (*rsa.PrivateKey, error) {
 	}
 
 	// Generate new key if file doesn't exist
-	log.Printf("🔑 Generating new RSA key and saving to %s", filename)
+	log.Printf("Generating new RSA key and saving to %s", filename)
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate key: %w", err)
@@ -689,7 +689,7 @@ func main() {
 
 	// When client reach for the api/posts endpoint
 	mux.HandleFunc("/api/posts", func(w http.ResponseWriter, r *http.Request) {
-		// 1. Get the JWT from the Authorization header
+		// Get the JWT from the Authorization header
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 			http.Error(w, "Authorization header is missing or invalid", http.StatusUnauthorized)
@@ -697,7 +697,7 @@ func main() {
 		}
 		jwtString := strings.TrimPrefix(authHeader, "Bearer ")
 
-		// 2. Validate the JWT locally using the verifier
+		// Validate the JWT locally using the verifier
 		// The verifier checks the signature against the JWKS, the expiration, and the issuer.
 		accessToken, err := jwtVerifier.Verify(r.Context(), jwtString)
 		if err != nil {
@@ -706,7 +706,7 @@ func main() {
 			return
 		}
 
-		// 3. Extract custom claims from the token (including scope)
+		// Extract custom claims from the token (including scope)
 		var claims struct {
 			Scope string `json:"scope"`
 		}
@@ -715,7 +715,7 @@ func main() {
 			return
 		}
 
-		// 4. Enforce scope from the the JWT's "scope" claim
+		// Enforce scope from the the JWT's "scope" claim
 		grantedScopes := strings.Fields(claims.Scope)
 		hasScope := false
 		for _, scope := range grantedScopes {
@@ -729,7 +729,7 @@ func main() {
 			return
 		}
 
-		// 5. Get user ID from the JWT's "sub" (subject) claim and proceed
+		// Get user ID from the JWT's "sub" (subject) claim and proceed
 		userID, err := strconv.Atoi(accessToken.Subject)
 		if err != nil {
 			http.Error(w, "Invalid user ID in token", http.StatusInternalServerError)
@@ -749,20 +749,10 @@ func main() {
 
 	
 
-	log.Println("🚀 OpenID Provider running on http://localhost:8080")
-	log.Println("📖 Well-known endpoint: http://localhost:8080/.well-known/openid-configuration")
-	log.Println("🔑 JWKS endpoint: http://localhost:8080/jwks")
-	log.Println("💾 Database: blog (users table)")
-
-	
-	
-
-	
-
-	_, err = oidc.NewProvider(ctx, "http://localhost:8080")
-    if err != nil {
-        log.Fatalf("Failed to create OIDC provider verifier after server start: %v", err)
-    }
+	log.Println("OpenID Provider running on http://localhost:8080")
+	log.Println("Well-known endpoint: http://localhost:8080/.well-known/openid-configuration")
+	log.Println("JWKS endpoint: http://localhost:8080/jwks")
+	log.Println("Database: blog (users table)")
     
 	select{}
     

@@ -183,7 +183,7 @@ func main() {
 		`, string(userInfoData), string(postsData), tokens.AccessToken, tokens.IDToken)
 
 		w.Header().Set("content-type", "application/json")
-		w.Write(userInfoData)
+
 	}
 
 	// you could also just take the access_token and id_token without calling the userinfo endpoint:
