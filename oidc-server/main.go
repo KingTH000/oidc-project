@@ -197,6 +197,87 @@ func (m *InMemoryClientManager) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// MySQLClientManager implements the goidc.ClientManager interface using a SQL database.
+type MySQLClientManager struct {
+    db *sql.DB
+}
+
+func NewMySQLClientManager(db *sql.DB) *MySQLClientManager {
+    return &MySQLClientManager{db: db}
+}
+
+// Client fetches a client's configuration from the database by its ID.
+func (m *MySQLClientManager) Client(ctx context.Context, id string) (*goidc.Client, error) {
+    var redirectURIs, grantTypes, responseTypes, scopeIDs string
+    client := &goidc.Client{
+        ClientMeta: goidc.ClientMeta{},
+    }
+
+    err := m.db.QueryRowContext(ctx,
+        `SELECT id, hashed_secret, name, redirect_uris, grant_types, response_types, scope_ids, token_authn_method, created_at_timestamp 
+         FROM client_apps WHERE id = ?`, id,
+    ).Scan(
+        &client.ID, &client.HashedSecret, &client.ClientMeta.Name, &redirectURIs, &grantTypes,
+        &responseTypes, &scopeIDs, &client.ClientMeta.TokenAuthnMethod, &client.CreatedAtTimestamp,
+    )
+    if err == sql.ErrNoRows {
+        return nil, errors.New("client not found")
+    }
+    if err != nil {
+        return nil, fmt.Errorf("database error fetching client: %w", err)
+    }
+
+    // Deserialize string fields back into slices
+    client.ClientMeta.RedirectURIs = strings.Split(redirectURIs, ",")
+    for _, gt := range strings.Split(grantTypes, ",") {
+        client.ClientMeta.GrantTypes = append(client.ClientMeta.GrantTypes, goidc.GrantType(gt))
+    }
+    for _, rt := range strings.Split(responseTypes, ",") {
+        client.ClientMeta.ResponseTypes = append(client.ClientMeta.ResponseTypes, goidc.ResponseType(rt))
+    }
+    client.ClientMeta.ScopeIDs = scopeIDs
+
+    return client, nil
+}
+
+// Save stores a new client or updates an existing one in the database.
+func (m *MySQLClientManager) Save(ctx context.Context, client *goidc.Client) error {
+    // Serialize slice fields into comma-separated strings
+    redirectURIs := strings.Join(client.ClientMeta.RedirectURIs, ",")
+    var grantTypes []string
+    for _, gt := range client.ClientMeta.GrantTypes {
+        grantTypes = append(grantTypes, string(gt))
+    }
+    grantTypesStr := strings.Join(grantTypes, ",")
+    var responseTypes []string
+    for _, rt := range client.ClientMeta.ResponseTypes {
+        responseTypes = append(responseTypes, string(rt))
+    }
+    responseTypesStr := strings.Join(responseTypes, ",")
+
+    _, err := m.db.ExecContext(ctx,
+        `INSERT INTO client_apps (id, hashed_secret, name, redirect_uris, grant_types, response_types, scope_ids, token_authn_method, created_at_timestamp) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE 
+         hashed_secret = VALUES(hashed_secret), name = VALUES(name), redirect_uris = VALUES(redirect_uris), 
+         grant_types = VALUES(grant_types), response_types = VALUES(response_types), scope_ids = VALUES(scope_ids), 
+         token_authn_method = VALUES(token_authn_method)`,
+        client.ID, client.HashedSecret, client.ClientMeta.Name, redirectURIs, grantTypesStr,
+        responseTypesStr, client.ClientMeta.ScopeIDs, client.ClientMeta.TokenAuthnMethod, client.CreatedAtTimestamp,
+    )
+
+    if err != nil {
+        return fmt.Errorf("database error saving client: %w", err)
+    }
+    return nil
+}
+
+// Delete removes a client from the database.
+func (m *MySQLClientManager) Delete(ctx context.Context, id string) error {
+    _, err := m.db.ExecContext(ctx, "DELETE FROM client_apps WHERE id = ?", id)
+    return err
+}
+
 // InMemoryAuthnSessionManager implements goidc.AuthnSessionManager
 type InMemoryAuthnSessionManager struct {
 	sessions map[string]*goidc.AuthnSession
@@ -434,7 +515,8 @@ func main() {
 		return jwks, nil
 	}
 
-	clientManager := NewInMemoryClientManager()
+	// clientManager := NewInMemoryClientManager()
+	clientManager := NewMySQLClientManager(db)
 	authnSessionManager := NewInMemoryAuthnSessionManager()
 	grantSessionManager := NewInMemoryGrantSessionManager()
 
@@ -617,48 +699,16 @@ func main() {
 			return goidc.NewJWTTokenOptions(goidc.RS256, 3600)
 		}),
 
-		provider.WithTokenIntrospection(
-			func (*goidc.Client, goidc.TokenInfo) bool {
-				 return true },
-			goidc.ClientAuthnSecretPost,
-		),
+		// provider.WithTokenIntrospection(
+		// 	func (*goidc.Client, goidc.TokenInfo) bool {
+		// 		 return true },
+		// 	goidc.ClientAuthnSecretPost,
+		// ),
 		//provider.WithTokenIntrospectionEndpoint("http://localhost:8080/introspect"),
 	)
 	if err != nil {
 		log.Fatalf("Failed to create provider: %v", err)
 	}
-
-	hashedSecretBytes, err := bcrypt.GenerateFromPassword([]byte("client-secret"), bcrypt.DefaultCost)
-	if err != nil {
-		log.Fatalf("Failed to hash client secret: %v", err)
-	}
-	hashedSecret := string(hashedSecretBytes)
-
-	staticClient := &goidc.Client{
-		ID:                 "test-client",
-		HashedSecret:       hashedSecret,
-		CreatedAtTimestamp: int(time.Now().Unix()),
-		ClientMeta: goidc.ClientMeta{
-			Name: "Test Client",
-			RedirectURIs: []string{
-				"http://localhost:3000/auth/callback",
-			},
-			GrantTypes: []goidc.GrantType{
-				goidc.GrantAuthorizationCode,
-				goidc.GrantRefreshToken,
-			},
-			ResponseTypes: []goidc.ResponseType{
-				goidc.ResponseTypeCode,
-			},
-			TokenAuthnMethod: goidc.ClientAuthnSecretPost,
-			ScopeIDs:         "openid profile email offline_access posts.read",
-		},
-	}
-
-	if err := clientManager.Save(context.Background(), staticClient); err != nil {
-		log.Fatalf("Failed to save static client: %v", err)
-	}
-
 	
 
 	mux := http.NewServeMux()
