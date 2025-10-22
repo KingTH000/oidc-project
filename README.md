@@ -1,6 +1,6 @@
 # Go OIDC Provider & Client Example
 
-This project is a fully functional OpenID Connect (OIDC) provider and an example client application built with Go. It demonstrates a complete authentication and authorization flow, from user login with database integration to securing an API with token introspection and custom scopes.
+This project is a fully functional OpenID Connect (OIDC) provider and an example client application built with Go. It demonstrates a complete authentication and authorization flow, from user login with database integration to securing an API with JWTs.
 
 ## About The Project
 
@@ -13,11 +13,11 @@ The goal of this project is to serve as a practical, real-world example of imple
 
 ### Features
 
-  * ✅ **Database Integration**: User credentials are securely stored in a MySQL database, with password hashing handled by `bcrypt`.
-  * ✅ **User Consent Screen**: After logging in, users are presented with a consent screen detailing the specific permissions (scopes) the client application is requesting.
-  * ✅ **API Protection**: Includes a protected API endpoint (`/api/posts`) that serves user-specific data from the database.
-  * ✅ **Token Introspection**: The API is secured using the standard Token Introspection endpoint (`/introspect`), allowing the API to validate access tokens in a decoupled manner.
-  * ✅ **Custom Scopes**: Implements custom scopes (e.g., `posts.read`) to manage granular access to API resources.
+**Database Integration**: User credentials are securely stored in a MySQL database, with password hashing handled by `bcrypt`.
+**User Consent Screen**: After logging in, users are presented with a consent screen detailing the specific permissions (scopes) the client application is requesting.
+**API Protection**: Includes a protected API endpoint (`/api/posts`) that serves user-specific data from the database.
+**Local JWT Validation (JWKS)**: Access tokens are issued as JWTs. The API validates them locally and efficiently by fetching the provider's public keys from the JWKS endpoint.
+**Custom Scopes**: Implements custom scopes (e.g., `posts.read`) to manage granular access to API resources.
 
 -----
 
@@ -52,7 +52,7 @@ The provider runs on port `8080`.
     ```sh
     go run main.go
     ```
-    You should see log messages indicating that the server is connected to the database and running.
+    You should see log messages indicating that the server is connected to the database, running, and the JWT Verifier has been initialized.
 
 ### 3\. Run the Client Application
 
