@@ -520,7 +520,7 @@ func main() {
 	authnSessionManager := NewInMemoryAuthnSessionManager()
 	grantSessionManager := NewInMemoryGrantSessionManager()
 
-	// In your main() function, before the authentication policy is defined.
+	// define scope descriptions
 	scopeDescriptions := map[string]string{
 		goidc.ScopeOpenID.ID:        "Sign you in to the application.",
 		goidc.ScopeProfile.ID:       "Access your basic profile information (e.g., your name).",
@@ -627,7 +627,7 @@ func main() {
 					})
 				}
 				// Prepare data for the template
-				data := map[string]interface{}{
+				data := map[string]any{
 					"CallbackID": session.CallbackID,
 					"ClientName": client.ClientMeta.Name,
 					"Scopes":     scopesForTemplate,
