@@ -51,6 +51,9 @@ services:
         server: # Wait for the server to start first
             condition: service_healthy
 
+    networks:
+      - app-network
+
   # Service 3: The MySQL Database
   db:
     build:
@@ -73,6 +76,9 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+    networks:
+      - app-network
 
 volumes:
   db-data: # Declares the 'db-data' volume
