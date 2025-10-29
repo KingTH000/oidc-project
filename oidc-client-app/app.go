@@ -38,6 +38,7 @@ func main() {
 	scopes := strings.Split(os.Getenv("SCOPES"), " ")
 	responseMode := os.Getenv("RESPONSE_MODE")
 
+
 	var pkce bool
 	if pkceEnv, ok := os.LookupEnv("PKCE"); ok {
 		var err error
@@ -89,7 +90,7 @@ func main() {
 	ctx := logging.ToContext(context.TODO(), logger)
 	provider, err := rp.NewRelyingPartyOIDC(ctx, issuer, clientID, clientSecret, redirectURI, scopes, options...)
 	if err != nil {
-		logrus.Fatalf("error creating provider %s", err.Error())
+		logrus.Fatalf("error creating provider: %s", err.Error())
 	}
 
 	// generate some state (representing the state of the user in your application,
@@ -246,7 +247,7 @@ func main() {
 		}),
 	)
 
-	lis := fmt.Sprintf("127.0.0.1:%s", port)
+	lis := fmt.Sprintf("0.0.0.0:%s", port)
 	logger.Info("server listening, press ctrl+c to stop", "addr", lis)
 	err = http.ListenAndServe(lis, mw(http.DefaultServeMux))
 	if err != http.ErrServerClosed {

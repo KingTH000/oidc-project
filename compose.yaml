@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # Service 1: The OIDC Provider
+  server:
+    build:
+      context: .  # Look for files in the root folder
+      dockerfile: ./oidc-server/Dockerfile # Find the blueprint here
+    image: kingth000/goidc-server
+    ports:
+      - "8080:8080"
+    environment:
+      # Pass the database DSN to our Go app
+      # 'db' is the hostname of our database service
+      - DSN=root:your_secret_password@tcp(db:3306)/blog?parseTime=true
+    extra_hosts:
+      - "localhost:host-gateway"
+    depends_on:
+        db: # Wait for the database to start first
+            condition: service_healthy
+
+    healthcheck:
+      # Defines how to check if the server is ready
+      # It will try to download the .well-known config
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/.well-known/openid-configuration"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Service 2: The Client App
+  client:
+    build:
+      context: .
+      dockerfile: ./oidc-client-app/Dockerfile
+    image: kingth000/goidc-client
+    ports:
+      - "3000:3000"
+    environment:
+      # Pass the server's URL to our client app
+      - ISSUER=http://localhost:8080
+      - CLIENT_ID=test-client
+      - CLIENT_SECRET=client-secret
+      - PORT=3000
+      - SCOPES=openid profile email offline_access posts.read
+
+    extra_hosts:
+      # Map 'localhost' to the host machine's IP address
+      - "localhost:host-gateway"
+
+    depends_on:
+        server: # Wait for the server to start first
+            condition: service_healthy
+
+  # Service 3: The MySQL Database
+  db:
+    build:
+      context: .
+      dockerfile: ./mysql-db/Dockerfile
+    image: kingth000/goidc-mysql-db
+    ports:
+      - "3306:3306" # Connect 3306 to the container's 3306
+    environment:
+      - MYSQL_ROOT_PASSWORD=your_secret_password
+      - MYSQL_DATABASE=blog
+
+    volumes:
+    # saves database data to computer
+      - db-data:/var/lib/mysql
+
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  db-data: # Declares the 'db-data' volume
+
+networks:
+  app-network:
+    driver: bridge

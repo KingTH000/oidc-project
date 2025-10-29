@@ -477,7 +477,11 @@ func main() {
 	}
 
 	// Connect to MySQL database
-	dsn := "root:@tcp(localhost:3306)/blog?parseTime=true"
+	dsn := os.Getenv("DSN")
+    if dsn == "" {
+        log.Println("DSN environment variable not set, using default")
+        dsn = "root:@tcp(localhost:3306)/blog?parseTime=true"
+    }
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -802,7 +806,6 @@ func main() {
 	log.Println("OpenID Provider running on http://localhost:8080")
 	log.Println("Well-known endpoint: http://localhost:8080/.well-known/openid-configuration")
 	log.Println("JWKS endpoint: http://localhost:8080/jwks")
-	log.Println("Database: blog (users table)")
     
 	select{}
     
